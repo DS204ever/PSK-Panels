@@ -26,4 +26,5 @@ class Matrix:
         image.thumbnail((self.matrix.width,self.matrix.height), resample=Image.ANTIALIAS)
         self.matrix.SetImage(image.convert("RGB"))
 
-    
+    def clear(self):
+        self.matrix.Clear()

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import socket
 import asyncio
 import websocket
@@ -7,8 +9,9 @@ import rel
 import json
 from matrix import Matrix
 import base64
+import serial
 
-from PIL import Image #delete later
+from PIL import Image  # delete later
 
 websocket_ip = "192.168.1.65"
 websocket_port = 8080
@@ -20,6 +23,8 @@ udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 myMatrix = Matrix()
 
+ser = serial.Serial("/dev/ttyACM0",9600)
+
 def udp_client():
     while True:
         udp_client_socket.sendto(
@@ -30,17 +35,30 @@ def udp_client():
 def udp_server():
     udp_server_socket.bind(("", 8081))
     message, addr = udp_server_socket.recvfrom(1024)
-    print(message, addr)
-
+    print(message, addr)     
 
 def on_message(ws, message):
+
     jsonMessage = json.loads(message)
+    print(jsonMessage)
     if jsonMessage["type"] == "image":
-        myImage = Image.frombytes('RGB', (int(jsonMessage["width"]),int(jsonMessage["height"])), base64.b64decode(jsonMessage["content"]))
+        myImage = Image.frombytes('RGB', (int(jsonMessage["width"]), int(
+            jsonMessage["height"])), base64.b64decode(jsonMessage["content"]))
         myMatrix.applyImage(myImage, int(jsonMessage["brightness"]))
 
     elif jsonMessage["type"] == "color":
-        print("color")
+        myMatrix.lightZone((int(jsonMessage["rgb"][0]), int(jsonMessage["rgb"][1]), int(
+            jsonMessage["rgb"][2])), int(jsonMessage["brightness"]), int(jsonMessage["zone"]))
+        
+    elif jsonMessage["type"] == "clear":
+        myMatrix.clear()
+
+    elif jsonMessage["type"] == "status":
+        ser.write(jsonMessage["value"].encode())
+        serialMSG = ser.readline().decode()
+        trigger_string = '{{"type":"trigger", "zone":"{zone}"}}'.format(zone=serialMSG.strip()).encode()
+        print(trigger_string)
+        ws.send(trigger_string)
 
 def on_error(ws, error):
     print(error)
@@ -52,8 +70,8 @@ def on_close(ws, close_status_code, close_msg):
 
 def on_open(ws):
     print("Opened connection")
-    time.sleep(1)
-    ws.send("teste")
+    # time.sleep(1)
+    # ws.send("teste")
 
 
 if __name__ == '__main__':
@@ -63,6 +81,7 @@ if __name__ == '__main__':
     # server_process.start()
     # server_process.join()
     # client_process.terminate()
+    
     url = "ws://{ip}:{port}/".format(ip=websocket_ip, port=websocket_port)
     websocket.enableTrace(False)
     ws = websocket.WebSocketApp(url,
@@ -70,13 +89,15 @@ if __name__ == '__main__':
                                 on_message=on_message,
                                 on_error=on_error,
                                 on_close=on_close)
-
+    
+    # serial_process = Process(target=serial_listener, args=(ws,))
+    # serial_process.start()
+    
     # Set dispatcher to automatic reconnection, 5 second reconnect delay if connection closed unexpectedly
     ws.run_forever(dispatcher=rel, reconnect=5)
     rel.signal(2, rel.abort)  # Keyboard Interrupt
     rel.dispatch()
 
-    
     # myMatrix.lightZone((255,0,0), 25, 0)
     # while True:
     #     time.sleep(1)
